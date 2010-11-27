@@ -40,14 +40,9 @@
                 <version>2.5</version>
                 <configuration>
                     <skip>true</skip>
-                    <!--
-                    <resourceSrc>
-                        ${project.build.directory}/${project.build.finalName}.${project.packaging}
-                    </resourceSrc>
-                    <resourceDest>${deploy_dir}</resourceDest>
--->
                 </configuration>
             </plugin>
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-dependency-plugin</artifactId>
