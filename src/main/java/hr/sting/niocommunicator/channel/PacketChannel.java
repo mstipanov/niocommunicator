@@ -55,7 +55,9 @@ public class PacketChannel<T extends Packet> implements ReadWriteSelectorHandler
         this.packetAssembler = packetAssembler;
 
         this.inBuffer = ByteBuffer.allocateDirect(sc.socket().getReceiveBufferSize());
+        // TODO: 4k outbuffer
         this.outBuffer = ByteBuffer.allocateDirect(sc.socket().getSendBufferSize());
+        this.outBuffer.clear();
 
         this.remoteSocketAddress = getRemoteSocketAddressFrom(this.sc);
 
@@ -83,6 +85,7 @@ public class PacketChannel<T extends Packet> implements ReadWriteSelectorHandler
 
     @Override
     public void handleRead() {
+        // TODO: assemble read bytes into PDU and notify PduChannelListener about new packet
 
         try {
             // empty input buffer
@@ -145,6 +148,7 @@ public class PacketChannel<T extends Packet> implements ReadWriteSelectorHandler
             }
 
             if (flushedAll) {
+                // TODO: this should be done only if in not-ready state if performance suffers
                 listener.onSocketReadyForWrite();
             } else {
                 listener.onSocketNotReadyForWrite();
@@ -164,14 +168,19 @@ public class PacketChannel<T extends Packet> implements ReadWriteSelectorHandler
      */
     public synchronized void sendPacket(T packet) throws IOException {
 
+        boolean isAppendToEmptyOutBuffer = false;
+
         synchronized (outBuffer) {
+            isAppendToEmptyOutBuffer = (outBuffer.position() == 0);
             appendToBuffer(outBuffer, packet.getBytes());
         }
 
-        // don't write to socket here, only request write ready notification
-        requestWriteReadyNotificationLater();
+        if (isAppendToEmptyOutBuffer) {
+            // don't write to socket here, only request write ready notification
+            requestWriteReadyNotificationLater();
+        }
 
-        // notify packet channel listener about sent packet
+        // notify pdu channel listener about sent packet
         listener.packetSent(this, packet);
     }
 
@@ -295,7 +304,11 @@ public class PacketChannel<T extends Packet> implements ReadWriteSelectorHandler
      * @param packet
      */
     private void notifyListenerPacketArrived(T packet) {
-        listener.packetArrived(this, packet);
+        try {
+            listener.packetArrived(this, packet);
+        } catch (Exception e) {
+            LOGGER.error("error notifying pdu channel listener about new pdu: " + e.getMessage(), e);
+        }
     }
 
     private void closeAndNotifySocketException(Exception ex) {
@@ -314,7 +327,7 @@ public class PacketChannel<T extends Packet> implements ReadWriteSelectorHandler
         return new CallbackErrorHandler() {
             @Override
             public void handleError(Exception ex) {
-                LOGGER.error("error requesting write ready notification: sc=" + sc + ", error=" + ex.getMessage(), ex);
+                LOGGER.error("error requesting write ready notification: sc=" + sc + ", error=" + ex.getMessage());
             }
         };
     }
@@ -323,7 +336,7 @@ public class PacketChannel<T extends Packet> implements ReadWriteSelectorHandler
         return new CallbackErrorHandler() {
             @Override
             public void handleError(Exception ex) {
-                LOGGER.error("error requesting read ready notification: sc=" + sc + ", error=" + ex.getMessage(), ex);
+                LOGGER.error("error requesting read ready notification: sc=" + sc + ", error=" + ex.getMessage());
             }
         };
     }
@@ -356,7 +369,7 @@ public class PacketChannel<T extends Packet> implements ReadWriteSelectorHandler
             return new InetSocketAddress(sc.socket().getInetAddress(), sc.socket().getPort());
 
         } catch (Exception ex) {
-            LOGGER.error("error getting remote socket address: " + ex.getMessage(), ex);
+            LOGGER.error("error getting remote socket address: " + ex.getMessage());
         }
 
         return null;

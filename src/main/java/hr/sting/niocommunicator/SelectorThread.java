@@ -123,10 +123,20 @@ public class SelectorThread extends AbstractLoopWorker {
         if (Thread.currentThread() != selectorThread) {
             throw new IOException("Method can only be called from selector thread");
         }
+
         SelectionKey sk = channel.keyFor(selector);
-        if (null != sk) {
-            changeKeyInterest(sk, sk.interestOps() | interest);
+
+        if (sk == null) {
+            LOGGER.warn("selectionKey=null for channel=" + channel);
+            return;
         }
+
+        if (!sk.isValid()) {
+            LOGGER.warn("selectionKey is invalid for channel=" + channel);
+            return;
+        }
+
+        changeKeyInterest(sk, sk.interestOps() | interest);
     }
 
     /**
@@ -147,7 +157,7 @@ public class SelectorThread extends AbstractLoopWorker {
             public void run() {
                 try {
                     addChannelInterestNow(channel, interest);
-                } catch (IOException e) {
+                } catch (Exception e) {
                     errorHandler.handleError(e);
                 }
             }
@@ -350,9 +360,14 @@ public class SelectorThread extends AbstractLoopWorker {
      * Should be called holding the lock to <code>pendingInvocations</code>.
      */
     private void doInvocations() {
+
         synchronized (pendingInvocations) {
             for (Runnable task : pendingInvocations) {
-                task.run();
+                try {
+                    task.run();
+                } catch (Exception e) {
+                    LOGGER.error(e, e);
+                }
             }
             pendingInvocations.clear();
         }
